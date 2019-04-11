@@ -4,6 +4,7 @@
 #include <device_launch_parameters.h>
 #include <math.h>
 #include <string.h>
+#include <sys/time.h>
 
 
 // Radix sort kernel
@@ -51,7 +52,7 @@ __global__ void radix_sort_kernel(const int* d_number_array, int* d_digit_array,
             for (;;){
                 now = clock64();
                 clock_t cycles = now > start ? now - start : now + (0xffffffff - start);
-                if (cycles >= 1000000){
+                if (cycles >= 625000){
                     break;
                 }
             }
@@ -128,13 +129,6 @@ int main(int argc, char** argv) {
     rng(h_number_array,n);
     cudaMemcpy(d_number_array, h_number_array, n * sizeof(int), cudaMemcpyHostToDevice);
 
-    int max = INT_MIN;
-    for (int i = 0; i < n; i++){
-        if (max < h_number_array[i]){
-            max = h_number_array[i];
-        }
-    }
-
     dim3 grid, block;
     block.x = 32;
     block.y = 32;
@@ -143,6 +137,17 @@ int main(int argc, char** argv) {
         grid.x++;
 
     int lock = 0;
+	struct timeval timestart, timeend;
+	int elapsed;
+	
+	gettimeofday(&timestart, NULL);
+	int max = INT_MIN;
+    for (int i = 0; i < n; i++){
+        if (max < h_number_array[i]){
+            max = h_number_array[i];
+        }
+    }
+
     for (int divisor = 1; max/divisor > 0; divisor *= 10){
         radix_sort_kernel<<<grid, block>>>(d_number_array, d_digit_array, n, divisor, lock);
         cudaDeviceSynchronize();
@@ -158,6 +163,9 @@ int main(int argc, char** argv) {
         cudaMemcpy(d_number_array, h_changed_number_array, n * sizeof(int), cudaMemcpyHostToDevice);
         cudaMemset(d_digit_array, 0, 10 * sizeof(int));
     }
+	gettimeofday(&timeend, NULL);
+	elapsed = ((timeend.tv_sec - timestart.tv_sec) * 1000000) + (timeend.tv_usec - timestart.tv_usec);
+	printf("Sorting time: %d microseconds\n", elapsed);
 
     write_output(argv[2], h_number_array, n);
 
